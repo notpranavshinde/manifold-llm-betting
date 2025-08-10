@@ -1,0 +1,85 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.*
+.python-version
+.direnv/
+.envrc
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+pyrightconfig.json
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDE/editor settings
+.vscode/
+.idea/
+.spyproject/
+
+# Logs and databases
+*.log
+logs/
+*.sqlite
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node (if present in project)
+node_modules/
+
+# Secrets and keys (prevent committing private material)
+secrets.*
+*.pem
+*.key
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+
+# Caches
+.cache/
+
+# Local settings
+settings.local.py
+
