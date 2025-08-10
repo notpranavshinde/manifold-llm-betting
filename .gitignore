@@ -83,3 +83,5 @@ id_ed25519*
 # Local settings
 settings.local.py
 
+# Allow example env file to be tracked
+!.env.example
