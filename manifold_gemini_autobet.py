@@ -2,189 +2,49 @@ import json
 import time
 from datetime import datetime, timedelta
 import threading
-import os
+from rich.live import Live
+import google.generativeai as genai
+from rich.panel import Panel
+from rich.table import Table
 
-try:
-    import requests
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    from rich.text import Text
-    from rich.progress import track
-    from rich.live import Live
-    from google import genai
-    from google.genai import types
-    import keyboard
-except ImportError:
-    print("This script requires several libraries.")
-    print("Please install them using: pip install requests rich google-generativeai keyboard")
-    exit()
+from common import (
+    console,
+    exit_flag,
+    graceful_exit_listener,
+    get_user_details,
+    search_manifold_markets,
+    get_market_by_slug,
+    place_bet,
+    parse_description,
+    format_timestamp,
+    build_market_panel,
+    GEMINI_API_KEY,
+    MANIFOLD_API_KEY,
+    parse_args
+)
 
 # --- Unified Configuration ---
-# IMPORTANT: Your API keys have been removed from this file for security.
-# To run this script, you must set the following environment variables:
-#
-# 1. MANIFOLD_API_KEY: Your API key from Manifold Markets.
-# 2. GEMINI_API_KEY: Your API key for the Gemini API.
-#
-# For example, in PowerShell:
-# $env:MANIFOLD_API_KEY="your_key_here"
-# $env:GEMINI_API_KEY="your_key_here"
-#
-# Or in Command Prompt:
-# set MANIFOLD_API_KEY="your_key_here"
-# set GEMINI_API_KEY="your_key_here"
-#
-# To make them permanent, you can set them in your system's environment variable settings.
-MANIFOLD_API_KEY = os.environ.get("MANIFOLD_API_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
+args = parse_args()
 MARKET_LIMIT = 50
-KELLY_FRACTION = 0.25 # Bet a fraction of the Kelly criterion suggestion to reduce risk. 1.0 is full Kelly.
-RESOLUTION_MONTHS_LIMIT = 1
-MINIMUM_CONFIDENCE_TO_BET = ["Medium", "High"] # Only bet on predictions with this confidence level.
+KELLY_FRACTION = args.kelly_fraction
+RESOLUTION_MONTHS_LIMIT = args.resolution_months_limit
+MINIMUM_CONFIDENCE_TO_BET = [args.min_confidence, "High"]
 
 # --- API Configuration ---
-console = Console()
 try:
     if not MANIFOLD_API_KEY or not GEMINI_API_KEY:
         console.print("[bold red]Error: MANIFOLD_API_KEY and GEMINI_API_KEY environment variables must be set.[/bold red]")
         exit()
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    search_tool = types.Tool(google_search=types.GoogleSearch())
-    gen_cfg = types.GenerateContentConfig(tools=[search_tool])
+    genai.configure(api_key=GEMINI_API_KEY)  # type: ignore[attr-defined]
     GEMINI_MODEL = "gemini-2.5-pro"
+    gemini_model = genai.GenerativeModel(GEMINI_MODEL)  # type: ignore[attr-defined]
 except Exception as e:
     console.print(f"[bold red]Failed to configure Gemini API: {e}[/bold red]")
     exit()
 
-# --- Graceful Exit ---
-exit_flag = False
-def graceful_exit_listener():
-    global exit_flag
-    keyboard.wait('q')
-    exit_flag = True
-    console.print("\n[bold yellow]Exit signal received. Terminating after the current market analysis...[/bold yellow]")
-
-# --- Unified Functions ---
-
-def get_headers(api_key=MANIFOLD_API_KEY):
-    """Returns the headers for the API request, including the API key."""
-    return {
-        'Authorization': f'Key {api_key}',
-        'Content-Type': 'application/json'
-    }
-
-def get_user_details():
-    """Fetches the user's details from Manifold."""
-    api_url = "https://api.manifold.markets/v0/me"
-    try:
-        response = requests.get(api_url, headers=get_headers())
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        console.print(f"[bold red]Error fetching user details:[/bold red] {e}")
-        return None
-
-def search_manifold_markets(search_term, limit):
-    """Searches for markets on Manifold Markets."""
-    api_url = "https://api.manifold.markets/v0/search-markets"
-    params = {'term': search_term, 'limit': limit}
-    try:
-        response = requests.get(api_url, params=params, headers=get_headers())
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        console.print(f"[bold red]Error fetching data from Manifold API:[/bold red] {e}")
-        return None
-    except json.JSONDecodeError:
-        console.print("[bold red]Error: Failed to decode JSON response.[/bold red]")
-        return None
-
-def get_market_by_slug(slug):
-    """Fetches the full details of a single market by its slug."""
-    api_url = f"https://api.manifold.markets/v0/slug/{slug}"
-    try:
-        response = requests.get(api_url, headers=get_headers())
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException:
-        return None
-    except json.JSONDecodeError:
-        return None
-
-def place_bet(market_id, amount, outcome):
-    """Places a bet on a given market."""
-    global exit_flag
-    if exit_flag:
-        return False, 0
-    api_url = "https://api.manifold.markets/v0/bet"
-    payload = {"amount": amount, "contractId": market_id, "outcome": outcome}
-    console.print(f"\n[bold green]BETTING:[/bold green] Placing M${amount:.2f} on '{outcome}' for market {market_id}...")
-    try:
-        response = requests.post(api_url, headers=get_headers(MANIFOLD_API_KEY), json=payload)
-        response.raise_for_status()
-        console.print("[bold green]✔ BET PLACED SUCCESSFULLY.[/bold green]")
-        return True, amount
-    except requests.exceptions.RequestException as e:
-        error_message = e.response.json().get('message', str(e)) if e.response else str(e)
-        if e.response and e.response.status_code == 403:
-            error_message += "\n[bold yellow]This is a 403 Forbidden error. Please ensure your MANIFOLD_API_KEY has 'trade' permissions.[/bold yellow]"
-        console.print(f"[bold red]✖ FAILED TO PLACE BET:[/bold red] {error_message}")
-        return False, 0
-
-def parse_description(description):
-    """Parses the description object to extract plain text."""
-    if not description:
-        return "Not specified."
-    if isinstance(description, str):
-        return description
-    if isinstance(description, dict) and 'content' in description:
-        text_parts = []
-        for item in description.get('content', []):
-            if 'content' in item:
-                for sub_item in item['content']:
-                    if sub_item.get('type') == 'text' and 'text' in sub_item:
-                        text_parts.append(sub_item['text'])
-        full_text = " ".join(text_parts).strip()
-        return full_text if full_text else "Description not parsable."
-    return "Not specified."
-
-def format_timestamp(ts):
-    """
-    Formats a millisecond timestamp into a human-readable string.
-    Includes error handling for out-of-range timestamps.
-    """
-    if not ts:
-        return "N/A"
-    try:
-        # Convert milliseconds to seconds for fromtimestamp
-        return datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M:%S')
-    except (OSError, ValueError):
-        # This catches errors from timestamps that are too large (far future) or invalid.
-        return "Date out of range"
-
 def _build_market_panel(full_market, gemini_prob_str, gemini_reason_str):
-    table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
-    table.add_column(style="bold blue", width=20)
-    table.add_column()
-    table.add_row("Question:", Text(full_market.get('question', 'N/A'), style="bold white"))
-    market_url = f"https://manifold.markets/market/{full_market.get('slug')}"
-    table.add_row("URL:", f"[link={market_url}]{market_url}[/link]")
-    table.add_row("Market Creator:", f"[cyan]@{full_market.get('creatorUsername', 'N/A')}[/cyan]")
-    table.add_row("Resolution Date:", f"[yellow]{format_timestamp(full_market.get('closeTime'))}[/yellow]")
-    table.add_row("Total Volume:", f"[green]M${int(full_market.get('volume', 0)):,}[/green]")
-    table.add_row("Unique Bettors:", f"{full_market.get('uniqueBettorCount', 0)}")
-    outcome_type = full_market.get('outcomeType')
-    table.add_row("Market Type:", outcome_type)
-    if outcome_type == 'BINARY':
-        table.add_row("Market Probability:", f"[bold magenta]{full_market.get('probability', 0):.2%}[/bold magenta]")
-    table.add_row("Resolution Criteria:", Text(parse_description(full_market.get('description')), style="italic dim"))
-    table.add_row("---", "---")
-    table.add_row("Gemini 2.5 Pro Prob:", gemini_prob_str)
-    table.add_row("Gemini Reasoning:", Text(gemini_reason_str, style="italic"))
-    return Panel(table, border_style="blue", expand=False, title=f"Market Details: {full_market.get('slug')}", title_align="left")
+    return build_market_panel(full_market, gemini_prob_str, gemini_reason_str, "Gemini 2.5 Pro")
 
 def stream_gemini_analysis(full_market):
     global exit_flag
@@ -259,7 +119,9 @@ Example JSON output:
         
         try:
             full_response_text = ""
-            for chunk in client.models.generate_content_stream(model=GEMINI_MODEL, contents=prompt, config=gen_cfg):
+            # Stream model output incrementally
+            response = gemini_model.generate_content(prompt, stream=True)
+            for chunk in response:
                 if exit_flag:
                     break
                 if getattr(chunk, "text", None):
@@ -354,26 +216,38 @@ def main_gemini_autobet(search_query):
             edge = gemini_prob - market_prob
 
             if abs(edge) > 0.01: # Minimum edge to consider a bet
+                # Guard against division-by-zero and invalid odds
+                EPS = 1e-9
                 if edge > 0: # Bet on YES
+                    if market_prob <= EPS:
+                        console.print("[dim yellow]Skipping: market probability too low for stable odds (YES).[/dim yellow]")
+                        continue
                     p_win = gemini_prob
                     odds = 1 / market_prob
                     outcome = "YES"
                 else: # Bet on NO
+                    denom = 1 - market_prob
+                    if denom <= EPS:
+                        console.print("[dim yellow]Skipping: market probability too high for stable odds (NO).[/dim yellow]")
+                        continue
                     p_win = 1 - gemini_prob
-                    odds = 1 / (1 - market_prob)
+                    odds = 1 / denom
                     outcome = "NO"
 
-                if odds <= 1: # Avoid division by zero or negative odds
+                if odds <= 1: # Avoid degenerate or unprofitable odds
                     continue
 
                 kelly_percentage = (p_win * odds - 1) / (odds - 1)
+                if kelly_percentage <= 0:
+                    console.print("[dim]Kelly fraction <= 0; no bet.[/dim]")
+                    continue
                 bet_amount = balance * kelly_percentage * KELLY_FRACTION
 
                 if bet_amount >= 1:
                     if bet_amount > balance:
                         bet_amount = balance
                     
-                    bet_placed, amount_bet = place_bet(full_market['id'], bet_amount, outcome)
+                    bet_placed, amount_bet = place_bet(full_market['id'], bet_amount, outcome, full_market, gemini_prob, gemini_confidence, GEMINI_MODEL, args.dry_run)
                     if bet_placed:
                         balance -= amount_bet
                         console.print(f"[bold blue]New balance after bet:[/bold blue] M${balance:,.2f}")

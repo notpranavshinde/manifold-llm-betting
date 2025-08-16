@@ -3,65 +3,69 @@
 Automation scripts to analyze Manifold Markets and optionally place bets using LLMs.
 
 ## Overview
-- `modular_manifold_bettor.py`: Uses OpenRouter (e.g., `google/gemini-2.5-pro:online`) to analyze markets and place bets on Manifold.
-- `manifold_gemini_autobet.py`: Uses Google Gemini 2.5 Pro via the Google GenAI SDK to analyze markets and place bets on Manifold.
 
-Both scripts:
-- Read API keys from environment variables (no secrets in repo).
-- Show rich console output and listen for `q` to gracefully stop.
-- Can place live trades; use with care and small stakes.
+This project contains two Python scripts for automated betting on Manifold Markets:
+
+-   `modular_manifold_bettor.py`: Uses a model from OpenRouter to analyze and bet on markets.
+-   `manifold_gemini_autobet.py`: Uses Google Gemini 2.5 Pro to analyze and bet on markets.
+
+Both scripts share a common set of features, including:
+
+-   Reading API keys from environment variables.
+-   Displaying rich console output.
+-   Gracefully stopping on user input.
+-   Placing live trades.
+
+## Features
+
+-   **Modular Design:** The project is designed to be modular, with common functionality shared between the two scripts.
+-   **Model Selection:** The `modular_manifold_bettor.py` script allows the user to select a model from a list of available models.
+-   **Configurable Betting Parameters:** The betting parameters can be configured from the command line.
+-   **Bet Logging:** The scripts log all bets to a CSV file.
+-   **Dry-Run Mode:** The scripts can be run in a dry-run mode, where they only simulate bets without actually placing them.
 
 ## Requirements
-- Python 3.9+
-- Packages:
-  - Core: `requests`, `rich`, `keyboard`
-  - For Gemini script: `google-genai` (new SDK)
 
-Install:
+-   Python 3.9+
+-   The following Python packages:
+    -   `requests`
+    -   `rich`
+    -   `keyboard`
+    -   `google-genai`
+
+To install the required packages, run the following command:
+
 ```
 pip install requests rich keyboard google-genai
 ```
 
-Note: If using an older Gemini sample or different imports, you might need `google-generativeai` instead. This repo’s `manifold_gemini_autobet.py` uses the new `google-genai` SDK (`from google import genai`).
-
 ## Environment Variables
-Copy `.env.example` to your secrets manager or export these in your shell:
-- `MANIFOLD_API_KEY`: Manifold Markets API key (with trade permissions if betting).
-- `OPENROUTER_API_KEY`: OpenRouter API key (for `modular_manifold_bettor.py`).
-- `GEMINI_API_KEY`: Google Gemini API key (for `manifold_gemini_autobet.py`).
 
-Windows PowerShell examples:
-```
-$env:MANIFOLD_API_KEY="your_key_here"
-$env:OPENROUTER_API_KEY="your_key_here"
-$env:GEMINI_API_KEY="your_key_here"
-```
+Before running the scripts, you need to set the following environment variables:
 
-Command Prompt examples:
-```
-set MANIFOLD_API_KEY=your_key_here
-set OPENROUTER_API_KEY=your_key_here
-set GEMINI_API_KEY=your_key_here
-```
+-   `MANIFOLD_API_KEY`: Your Manifold Markets API key.
+-   `OPENROUTER_API_KEY`: Your OpenRouter API key (for the `modular_manifold_bettor.py` script).
+-   `GEMINI_API_KEY`: Your Google Gemini API key (for the `manifold_gemini_autobet.py` script).
 
 ## Usage
-Run OpenRouter-based bettor:
+
+To run the scripts, use the following commands:
+
 ```
 python modular_manifold_bettor.py
 ```
 
-Run Gemini-based bettor:
 ```
 python manifold_gemini_autobet.py
 ```
 
-Press `q` to exit gracefully after the current market analysis.
+The scripts accept the following command-line arguments:
 
-## Configuration Notes
-- Betting controls (e.g., `KELLY_FRACTION`, `MIN_EDGE`, market search limits) are constants near the top of each script.
-- `modular_manifold_bettor.py` uses an OpenRouter model ID string like `google/gemini-2.5-pro:online`. Ensure your key has access to the chosen model.
-- Network calls are limited to Manifold API and the respective LLM provider; no filesystem writes beyond normal Python runtime.
+-   `--kelly-fraction`: The fraction of the Kelly criterion to use for betting.
+-   `--resolution-months-limit`: The maximum number of months in the future to consider for markets.
+-   `--min-confidence`: The minimum confidence level required to place a bet.
+-   `--dry-run`: If set, the script will not place any bets.
 
 ## Caution
-These scripts can place real bets on your Manifold account. Start with small stakes, confirm API permissions, and monitor output. You are responsible for all trades executed by these tools.
 
+These scripts can place real bets on your Manifold account. Use them with care and at your own risk.
